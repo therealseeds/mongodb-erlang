@@ -29,7 +29,7 @@
 connect(Type, Hosts, TopologyOptions, WorkerOptions) ->
   mongoc:connect({Type, Hosts}, TopologyOptions, WorkerOptions).
 
--spec insert(atom() | pid(), collection(), list() | map() | bson:document()) ->
+-spec insert(atom() | pid(), colldb(), list() | map() | bson:document()) ->
   {{boolean(), map()}, list()}.
 insert(Topology, Collection, Document) ->
   mongoc:transaction(Topology,
@@ -38,7 +38,7 @@ insert(Topology, Collection, Document) ->
     end,
     #{}).
 
--spec update(atom() | pid(), collection(), selector(), map(), map()) ->
+-spec update(atom() | pid(), colldb(), selector(), map(), map()) ->
   {boolean(), map()}.
 update(Topology, Collection, Selector, Doc, Opts) ->
   Upsert = maps:get(upsert, Opts, false),
@@ -48,7 +48,7 @@ update(Topology, Collection, Selector, Doc, Opts) ->
       mc_worker_api:update(Worker, Collection, Selector, Doc, Upsert, MultiUpdate)
     end, Opts).
 
--spec delete(atom() | pid(), collection(), selector()) ->
+-spec delete(atom() | pid(), colldb(), selector()) ->
   {boolean(), map()}.
 delete(Topology, Collection, Selector) ->
   mongoc:transaction(Topology,
@@ -57,12 +57,12 @@ delete(Topology, Collection, Selector) ->
     end,
     #{}).
 
--spec find(atom() | pid(), collection(), selector(), projector()) ->
+-spec find(atom() | pid(), colldb(), selector(), projector()) ->
   {ok, cursor()} | [].
 find(Topology, Collection, Selector, Projector) ->
   find(Topology, Collection, Selector, Projector, 0, 0).
 
--spec find(atom() | pid(), collection(), selector(), projector(), integer(), integer()) ->
+-spec find(atom() | pid(), colldb(), selector(), projector(), integer(), integer()) ->
   {ok, cursor()} | [].
 find(Topology, Collection, Selector, Projector, Skip, Batchsize) ->
   mongoc:transaction_query(Topology,
@@ -71,12 +71,12 @@ find(Topology, Collection, Selector, Projector, Skip, Batchsize) ->
       mc_worker_api:find(Worker, Query)
     end, #{}).
 
--spec find_one(atom() | pid(), collection(), selector(), projector()) ->
+-spec find_one(atom() | pid(), colldb(), selector(), projector()) ->
   map() | undefined.
 find_one(Topology, Collection, Selector, Projector) ->
   find_one(Topology, Collection, Selector, Projector, 0).
 
--spec find_one(atom() | pid(), collection(), selector(), projector(), integer()) ->
+-spec find_one(atom() | pid(), colldb(), selector(), projector(), integer()) ->
   map() | undefined.
 find_one(Topology, Collection, Selector, Projector, Skip) ->
   mongoc:transaction_query(Topology,
@@ -85,7 +85,7 @@ find_one(Topology, Collection, Selector, Projector, Skip) ->
       mc_worker_api:find_one(Worker, Query)
     end, #{}).
 
--spec count(atom() | pid(), collection(), selector(), integer()) -> integer().
+-spec count(atom() | pid(), colldb(), selector(), integer()) -> integer().
 count(Topology, Collection, Selector, Limit) ->
   mongoc:transaction_query(Topology,
     fun(Conf = #{pool := Worker}) ->
@@ -97,7 +97,7 @@ count(Topology, Collection, Selector, Limit) ->
 %% @doc Creates index on collection according to given spec.
 %%      The key specification is a bson documents with the following fields:
 %%      key      :: bson document, for e.g. {field, 1, other, -1, location, 2d}, <strong>required</strong>
--spec ensure_index(pid() | atom(), collection(), bson:document()) -> ok | {error, any()}.
+-spec ensure_index(pid() | atom(), colldb(), bson:document()) -> ok | {error, any()}.
 ensure_index(Topology, Coll, IndexSpec) ->
   mongoc:transaction(Topology,
     fun(#{pool := Worker}) ->

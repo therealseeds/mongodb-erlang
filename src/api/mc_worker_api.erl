@@ -48,59 +48,60 @@ disconnect(Connection) ->
 
 %% @doc Insert a document or multiple documents into a collection.
 %%      Returns the document or documents with an auto-generated _id if missing.
--spec insert(pid(), collection(), list() | map() | bson:document()) -> {{boolean(), map()}, list()}.
+-spec insert(pid(), colldb(), list() | map() | bson:document()) -> {{boolean(), map()}, list()}.
 insert(Connection, Coll, Docs) ->
   insert(Connection, Coll, Docs, {<<"w">>, 1}).
 
--spec insert(pid(), collection(), list() | map() | bson:document(), bson:document()) -> {{boolean(), map()}, list()}.
+-spec insert(pid(), colldb(), list() | map() | bson:document(), bson:document()) -> {{boolean(), map()}, list()}.
 insert(Connection, Coll, Doc, WC) when is_tuple(Doc); is_map(Doc) ->
   {Res, [UDoc | _]} = insert(Connection, Coll, [Doc], WC),
   {Res, UDoc};
 insert(Connection, Coll, Docs, WC) ->
   Converted = prepare(Docs, fun assign_id/1),
-  {command(Connection, {<<"insert">>, Coll, <<"documents">>, Converted, <<"writeConcern">>, WC}), Converted}.
+  {command(Connection, {<<"insert">>, coll(Coll), <<"documents">>, Converted, <<"writeConcern">>, WC}, false, Coll), Converted}.
 
 %% @doc Replace the document matching criteria entirely with the new Document.
--spec update(pid(), collection(), selector(), map()) -> {boolean(), map()}.
+-spec update(pid(), colldb(), selector(), map()) -> {boolean(), map()}.
 update(Connection, Coll, Selector, Doc) ->
   update(Connection, Coll, Selector, Doc, false, false).
 
 %% @doc Replace the document matching criteria entirely with the new Document.
--spec update(pid(), collection(), selector(), map(), boolean(), boolean()) -> {boolean(), map()}.
+-spec update(pid(), colldb(), selector(), map(), boolean(), boolean()) -> {boolean(), map()}.
 update(Connection, Coll, Selector, Doc, Upsert, MultiUpdate) ->
   Converted = prepare(Doc, fun(D) -> D end),
-  command(Connection, {<<"update">>, Coll, <<"updates">>,
-    [#{<<"q">> => Selector, <<"u">> => Converted, <<"upsert">> => Upsert, <<"multi">> => MultiUpdate}]}).
+  command(Connection, {<<"update">>, coll(Coll), <<"updates">>,
+    [#{<<"q">> => Selector, <<"u">> => Converted, <<"upsert">> => Upsert, <<"multi">> => MultiUpdate}]},
+          false, Coll).
 
 %% @doc Replace the document matching criteria entirely with the new Document.
--spec update(pid(), collection(), selector(), map(), boolean(), boolean(), bson:document()) -> {boolean(), map()}.
+-spec update(pid(), colldb(), selector(), map(), boolean(), boolean(), bson:document()) -> {boolean(), map()}.
 update(Connection, Coll, Selector, Doc, Upsert, MultiUpdate, WC) ->
   Converted = prepare(Doc, fun(D) -> D end),
-  command(Connection, {<<"update">>, Coll, <<"updates">>,
+  command(Connection, {<<"update">>, coll(Coll), <<"updates">>,
     [#{<<"q">> => Selector, <<"u">> => Converted, <<"upsert">> => Upsert, <<"multi">> => MultiUpdate}],
-    <<"writeConcern">>, WC}).
+    <<"writeConcern">>, WC}, false, Coll).
 
 %% @doc Delete selected documents
--spec delete(pid(), collection(), selector()) -> {boolean(), map()}.
+-spec delete(pid(), colldb(), selector()) -> {boolean(), map()}.
 delete(Connection, Coll, Selector) ->
   delete_limit(Connection, Coll, Selector, 0).
 
 %% @doc Delete first selected document.
--spec delete_one(pid(), collection(), selector()) -> {boolean(), map()}.
+-spec delete_one(pid(), colldb(), selector()) -> {boolean(), map()}.
 delete_one(Connection, Coll, Selector) ->
   delete_limit(Connection, Coll, Selector, 1).
 
 %% @doc Delete selected documents
--spec delete_limit(pid(), collection(), selector(), integer()) -> {boolean(), map()}.
+-spec delete_limit(pid(), colldb(), selector(), integer()) -> {boolean(), map()}.
 delete_limit(Connection, Coll, Selector, N) ->
-  command(Connection, {<<"delete">>, Coll, <<"deletes">>,
-    [#{<<"q">> => Selector, <<"limit">> => N}]}).
+  command(Connection, {<<"delete">>, coll(Coll), <<"deletes">>,
+    [#{<<"q">> => Selector, <<"limit">> => N}]}, false, Coll).
 
 %% @doc Delete selected documents
--spec delete_limit(pid(), collection(), selector(), integer(), bson:document()) -> {boolean(), map()}.
+-spec delete_limit(pid(), colldb(), selector(), integer(), bson:document()) -> {boolean(), map()}.
 delete_limit(Connection, Coll, Selector, N, WC) ->
-  command(Connection, {<<"delete">>, Coll, <<"deletes">>,
-    [#{<<"q">> => Selector, <<"limit">> => N}], <<"writeConcern">>, WC}).
+  command(Connection, {<<"delete">>, coll(Coll), <<"deletes">>,
+    [#{<<"q">> => Selector, <<"limit">> => N}], <<"writeConcern">>, WC}, false, Coll).
 
 %% @doc Return first selected document, if any
 -spec find_one(pid(), colldb(), selector()) -> map() | undefined.
@@ -158,23 +159,27 @@ find(Connection, Query) when is_record(Query, query) ->
   end.
 
 %% @doc Count selected documents
--spec count(pid(), collection(), selector()) -> integer().
+-spec count(pid(), colldb(), selector()) -> integer().
 count(Connection, Coll, Selector) ->
   count(Connection, Coll, Selector, #{}).
 
 %% @doc Count selected documents up to given max number; 0 means no max.
 %%     Ie. stops counting when max is reached to save processing time.
--spec count(pid(), collection(), selector(), map()) -> integer().
+-spec count(pid(), colldb(), selector(), map()) -> integer().
 count(Connection, Coll, Selector, Args = #{limit := Limit}) when Limit > 0 ->
   ReadPref = maps:get(readopts, Args, #{<<"mode">> => <<"primary">>}),
-  count(Connection, {<<"count">>, Coll, <<"query">>, Selector, <<"limit">>, Limit, <<"$readPreference">>, ReadPref});
+  count_query(Connection, Coll, {<<"count">>, coll(Coll), <<"query">>, Selector, <<"limit">>, Limit, <<"$readPreference">>, ReadPref});
 count(Connection, Coll, Selector, Args) ->
   ReadPref = maps:get(readopts, Args, #{<<"mode">> => <<"primary">>}),
-  count(Connection, {<<"count">>, Coll, <<"query">>, Selector, <<"$readPreference">>, ReadPref}).
+  count_query(Connection, {<<"count">>, coll(Coll), <<"query">>, Selector, <<"$readPreference">>, ReadPref}, Coll).
 
 -spec count(pid() | atom(), bson:document()) -> integer().
 count(Connection, Query) ->
   {true, #{<<"n">> := N}} = command(Connection, Query),
+  trunc(N). % Server returns count as float
+-spec count_query(pid() | atom(), colldb(), bson:document()) -> integer().
+count_query(Connection, Coll, Query) ->
+  {true, #{<<"n">> := N}} = command(Connection, Query, false, Coll),
   trunc(N). % Server returns count as float
 
 %% @doc Create index on collection according to given spec.
@@ -206,6 +211,24 @@ command(Connection, Command, _IsSlaveOk = true) ->
     });
 command(Connection, Command, _IsSlaveOk = false) ->
   command(Connection, Command).
+
+-spec command(pid(), mc_worker_api:selector(), boolean(), colldb()) -> {boolean(), map()}. % Action
+command(Connection, Command, _IsSlaveOk = false, {Db, _}) ->
+  command(Connection,
+    #'query'{
+      collection = {Db, <<"$cmd">>},
+      selector = Command
+    });
+command(Connection, Command, _IsSlaveOk = true, {Db, _}) ->
+  command(Connection,
+    #'query'{
+      collection = {Db, <<"$cmd">>},
+      selector = Command,
+      slaveok = true,
+      sok_overriden = true
+      });
+command(Connection, Command, IsSlaveOk, _) ->
+    command(Connection, Command, IsSlaveOk).
 
 %% @doc Execute MongoDB command in this thread
 -spec sync_command(port(), binary(), mc_worker_api:selector(), module()) -> {boolean(), map()}.
@@ -274,3 +297,10 @@ assign_id(Doc) ->
     {} -> bson:update(<<"_id">>, mongo_id_server:object_id(), Doc);
     _Value -> Doc
   end.
+
+%% @private
+-spec coll(colldb()) -> collection().
+coll({_, Coll}) ->
+    Coll;
+coll(Coll) ->
+    Coll.
